@@ -1,0 +1,184 @@
+﻿<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&display=swap" rel="stylesheet">
+<title>KakiMoni 子機 - サーバー接続ランチャー</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Montserrat', sans-serif;
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 18px;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow: hidden;
+  }
+  h2 { font-size: 1.1rem; color: #86efac; }
+  .section {
+    background: #1e293b;
+    border-radius: 3px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .section-title { font-size: 0.78rem; color: #64748b; font-weight: bold; letter-spacing: 0.05em; }
+  .field { display: flex; flex-direction: column; gap: 4px; }
+  label { font-size: 0.8rem; color: #94a3b8; }
+  .row { display: flex; gap: 6px; align-items: center; }
+  input[type=text], input[type=number] {
+    flex: 1;
+    padding: 8px 10px;
+    background: #0f172a;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    color: #e2e8f0;
+    font-size: 0.9rem;
+    min-width: 0;
+  }
+  .btn {
+    padding: 8px 14px;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: bold;
+    white-space: nowrap;
+    box-shadow: 0 4px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.15);
+    transition: box-shadow 0.1s, transform 0.1s;
+  }
+  .btn:hover  { box-shadow: 0 3px 0 rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,255,255,0.15); transform: translateY(1px); }
+  .btn:active { box-shadow: 0 1px 0 rgba(0,0,0,0.45), inset 0 2px 4px rgba(0,0,0,0.3); transform: translateY(3px); }
+  .btn-green  { background: linear-gradient(180deg,#16a34a 0%,#15803d 100%); color: #fff; }
+  .btn-amber  { background: linear-gradient(180deg,#b45309 0%,#92400e 100%); color: #fcd34d; }
+  .btn-blue   { background: linear-gradient(180deg,#0284c7 0%,#0369a1 100%); color: #fff; }
+  .btn-slate  { background: linear-gradient(180deg,#475569 0%,#334155 100%); color: #e2e8f0; }
+  .btn:disabled { opacity: 0.35; cursor: default; transform: none; box-shadow: 0 4px 0 rgba(0,0,0,0.45); }
+  .btn-full { width: 100%; padding: 10px; font-size: 0.95rem; }
+  .note { font-size: 0.75rem; color: #64748b; line-height: 1.5; }
+  .status {
+    font-size: 0.8rem;
+    padding: 6px 8px;
+    border-radius: 3px;
+    background: #0f172a;
+    color: #64748b;
+    min-height: 26px;
+  }
+  .status.ready { color: #4ade80; }
+  .status.error { color: #f87171; }
+</style>
+</head>
+<body>
+
+<h2>✏️ KakiMoni 子機 サーバー接続ランチャー</h2>
+
+<!-- 接続設定 -->
+<div class="section">
+  <div class="section-title">接続設定</div>
+  <div class="field">
+    <label>サーバーURL</label>
+    <input id="serverUrl" type="text" placeholder="http://192.168.x.x:3000">
+  </div>
+  <button class="btn btn-green btn-full" id="btnStart">子機を起動</button>
+  <button class="btn btn-amber btn-full" id="btnTest" style="margin-top:4px;">🧪 テストモード（サーバー不要）</button>
+  <p class="note">※ ID・背景・パレットなどの設定は起動後の画面で行います</p>
+</div>
+
+<!-- 更新 -->
+<div class="section">
+  <div class="section-title">アプリ更新（親機LAN配信）</div>
+  <button class="btn btn-slate btn-full" id="btnCheckUpdate">更新を確認</button>
+  <button class="btn btn-blue btn-full" id="btnApplyUpdate" disabled>更新を適用して再起動</button>
+  <div class="status" id="updateStatus">未確認</div>
+</div>
+
+<script>
+const { ipcRenderer } = require('electron');
+
+let latestUpdateInfo = null;
+
+// 前回設定を復元
+const savedUrl = localStorage.getItem('client_serverUrl');
+if (savedUrl) document.getElementById('serverUrl').value = savedUrl;
+
+document.getElementById('btnStart').addEventListener('click', () => {
+  const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  localStorage.setItem('client_serverUrl', serverUrl);
+  ipcRenderer.send('open-main', { serverUrl });
+});
+
+document.getElementById('btnTest').addEventListener('click', () => {
+  ipcRenderer.send('open-test', { seatId: 1 });
+});
+
+document.getElementById('btnCheckUpdate').addEventListener('click', async () => {
+  const statusEl = document.getElementById('updateStatus');
+  const applyBtn = document.getElementById('btnApplyUpdate');
+  const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  latestUpdateInfo = null;
+  applyBtn.disabled = true;
+  statusEl.className = 'status';
+  statusEl.textContent = '更新を確認中...';
+
+  const result = await ipcRenderer.invoke('check-client-update', { serverUrl });
+  if (!result || !result.ok) {
+    statusEl.className = 'status error';
+    statusEl.textContent = `確認失敗: ${result?.error || 'unknown error'}`;
+    return;
+  }
+
+  if (!result.available) {
+    statusEl.className = 'status ready';
+    statusEl.textContent = `最新です (現在 v${result.currentVersion})`;
+    return;
+  }
+
+  latestUpdateInfo = result;
+  applyBtn.disabled = false;
+  statusEl.className = 'status ready';
+  statusEl.textContent = `更新あり: v${result.currentVersion} -> v${result.latestVersion}`;
+});
+
+document.getElementById('btnApplyUpdate').addEventListener('click', async () => {
+  const statusEl = document.getElementById('updateStatus');
+  const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  if (!latestUpdateInfo) {
+    statusEl.className = 'status error';
+    statusEl.textContent = '先に更新確認を実行してください。';
+    return;
+  }
+
+  const ok = window.confirm(`v${latestUpdateInfo.latestVersion} を適用して再起動しますか？`);
+  if (!ok) return;
+
+  statusEl.className = 'status';
+  statusEl.textContent = '更新をダウンロード中...';
+
+  const dl = await ipcRenderer.invoke('download-client-update', {
+    serverUrl,
+    fileName: latestUpdateInfo.fileName,
+    downloadPath: latestUpdateInfo.downloadPath,
+    sha256: latestUpdateInfo.sha256,
+  });
+  if (!dl || !dl.ok) {
+    statusEl.className = 'status error';
+    statusEl.textContent = `ダウンロード失敗: ${dl?.error || 'unknown error'}`;
+    return;
+  }
+
+  statusEl.textContent = '更新を適用しています。自動で再起動します...';
+  const ap = await ipcRenderer.invoke('apply-client-update', { downloadedPath: dl.downloadedPath });
+  if (!ap || !ap.ok) {
+    statusEl.className = 'status error';
+    statusEl.textContent = `適用失敗: ${ap?.error || 'unknown error'}`;
+  }
+});
+</script>
+</body>
+</html>
