@@ -220,18 +220,12 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
     }
 
     const currentExePath = process.execPath;
-    const backupExePath = `${currentExePath}.bak`;
     const scriptPath = path.join(app.getPath('temp'), `kakimoni-client-updater-${Date.now()}.cmd`);
     const script = [
       '@echo off',
       'setlocal',
       'timeout /t 2 /nobreak >nul',
-      `copy /y "${currentExePath}" "${backupExePath}" >nul`,
-      `copy /y "${downloadedPath}" "${currentExePath}" >nul`,
-      'if errorlevel 1 (',
-      `  copy /y "${backupExePath}" "${currentExePath}" >nul`,
-      ')',
-      `start "" "${currentExePath}"`,
+      `start "" "${downloadedPath}" /S`,
       `del /f /q "${downloadedPath}" >nul 2>nul`,
       `del /f /q "${scriptPath}" >nul 2>nul`,
       'endlocal',

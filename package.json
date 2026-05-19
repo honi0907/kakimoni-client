@@ -1,14 +1,36 @@
 {
   "name": "kakimoni-client",
-  "version": "1.0.2",
+  "version": "1.0.4",
   "description": "KakiMoni 子機アプリ",
   "main": "main.js",
   "scripts": {
     "start": "electron .",
-    "build": "electron-packager . KakiMoni_Client --platform=win32 --arch=x64 --out=dist --overwrite --asar"
+    "build": "electron-builder --win nsis"
   },
   "devDependencies": {
     "electron": "^29.0.0",
-    "electron-packager": "^17.0.0"
+    "electron-builder": "^26.10.0"
+  },
+  "build": {
+    "appId": "jp.honi0907.kakimoni.client",
+    "productName": "KakiMoni_Client",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!dist/**"
+    ],
+    "win": {
+      "target": "nsis",
+      "signAndEditExecutable": false,
+      "artifactName": "KakiMoni_Client-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    }
   }
 }
