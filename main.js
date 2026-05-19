@@ -219,20 +219,24 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
       return { ok: false, error: '更新ファイルが見つかりません。' };
     }
 
-    const currentExePath = process.execPath;
-    const scriptPath = path.join(app.getPath('temp'), `kakimoni-client-updater-${Date.now()}.cmd`);
-    const script = [
-      '@echo off',
-      'setlocal',
-      'timeout /t 2 /nobreak >nul',
-      `start "" "${downloadedPath}" /S`,
-      `del /f /q "${downloadedPath}" >nul 2>nul`,
-      `del /f /q "${scriptPath}" >nul 2>nul`,
-      'endlocal',
-    ].join('\r\n');
+    // PowerShell でインストーラーを実行（UAC対応）
+    const psScript = [
+      '$exe = @"',
+      downloadedPath,
+      '"@',
+      '$args = "/S"',
+      'Start-Process -FilePath $exe -ArgumentList $args -Wait',
+    ].join('\n');
 
-    fs.writeFileSync(scriptPath, script, 'utf-8');
-    spawn('cmd.exe', ['/c', scriptPath], { detached: true, stdio: 'ignore' }).unref();
+    const scriptPath = path.join(app.getPath('temp'), `kakimoni-client-updater-${Date.now()}.ps1`);
+    fs.writeFileSync(scriptPath, psScript, 'utf-8');
+
+    // PowerShell でスクリプトを実行（ExecutionPolicy 無視）
+    spawn('powershell.exe', [
+      '-ExecutionPolicy', 'Bypass',
+      '-File', scriptPath,
+    ], { detached: true, stdio: 'ignore' }).unref();
+
     setTimeout(() => app.quit(), 100);
     return { ok: true };
   } catch (e) {
