@@ -193,7 +193,10 @@ ipcMain.handle('download-client-update', async (event, { serverUrl, fileName, do
     const url = new URL(relPath, `${base}/`).toString();
 
     const tempDir = app.getPath('temp');
-    const targetPath = path.join(tempDir, `kakimoni-client-update-${Date.now()}.exe`);
+    const targetPath = path.join(tempDir, `kakimoni-client-update-${safeName}`);
+    try {
+      if (fs.existsSync(targetPath)) fs.unlinkSync(targetPath);
+    } catch {}
     await downloadFile(url, targetPath);
 
     if (sha256) {
@@ -221,11 +224,11 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
 
     const toPsSingleQuoted = (v) => String(v).replace(/'/g, "''");
 
-    // まずインストーラー起動(UAC)を同期確認する。失敗時は子機を終了しない。
+    // UACで通常インストーラーを起動する。/Sを使わずUI表示で確実に目視できるようにする。
     const launchCmd = [
       "$ErrorActionPreference = 'Stop'",
-      `$p = Start-Process -FilePath '${toPsSingleQuoted(downloadedPath)}' -ArgumentList '/S' -Verb RunAs -PassThru`,
-      'Write-Output $p.Id',
+      `$null = Start-Process -FilePath '${toPsSingleQuoted(downloadedPath)}' -Verb RunAs`,
+      'Write-Output OK',
     ].join('; ');
     const launched = spawnSync('powershell.exe', [
       '-NoProfile',
@@ -236,41 +239,13 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
       windowsHide: true,
     });
 
-    if (launched.status !== 0) {
+    if (launched.status !== 0 || !String(launched.stdout || '').includes('OK')) {
       const errText = String((launched.stderr || launched.stdout || '')).trim();
       return { ok: false, error: errText || 'インストーラーの起動に失敗しました（UACが拒否された可能性があります）。' };
     }
 
-    const installerPid = parseInt(String(launched.stdout || '').trim(), 10);
-    if (!Number.isFinite(installerPid) || installerPid <= 0) {
-      return { ok: false, error: 'インストーラーPIDを取得できませんでした。' };
-    }
-
-    // 更新用スクリプトを別プロセスで実行し、インストーラー完了後に子機を再起動する
-    const currentExePath = process.execPath;
-    const psScript = [
-      '$ErrorActionPreference = "Stop"',
-      '$installerPid = ' + installerPid,
-      '$appExe = @"',
-      currentExePath,
-      '"@',
-      'Wait-Process -Id $installerPid -ErrorAction SilentlyContinue',
-      'Start-Sleep -Milliseconds 500',
-      'Start-Process -FilePath $appExe',
-      'Remove-Item -LiteralPath $PSCommandPath -ErrorAction SilentlyContinue',
-    ].join('\n');
-
-    const scriptPath = path.join(app.getPath('temp'), `kakimoni-client-updater-${Date.now()}.ps1`);
-    fs.writeFileSync(scriptPath, psScript, 'utf-8');
-
-    // PowerShell でスクリプトを実行（ExecutionPolicy 無視）
-    spawn('powershell.exe', [
-      '-NoProfile',
-      '-ExecutionPolicy', 'Bypass',
-      '-File', scriptPath,
-    ], { detached: true, stdio: 'ignore' }).unref();
-
-    setTimeout(() => app.quit(), 200);
+    // インストーラーに更新を引き継ぐため、起動が確認できたら子機を終了する
+    setTimeout(() => app.quit(), 500);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
