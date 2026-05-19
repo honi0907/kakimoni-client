@@ -219,13 +219,22 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
       return { ok: false, error: '更新ファイルが見つかりません。' };
     }
 
-    // PowerShell でインストーラーを実行（UAC対応）
+    // 更新用スクリプトを別プロセスで実行し、完了後に子機を再起動する
+    const currentExePath = process.execPath;
     const psScript = [
-      '$exe = @"',
+      '$ErrorActionPreference = "Stop"',
+      '$installer = @"',
       downloadedPath,
       '"@',
-      '$args = "/S"',
-      'Start-Process -FilePath $exe -ArgumentList $args -Wait',
+      '$appExe = @"',
+      currentExePath,
+      '"@',
+      'Start-Sleep -Milliseconds 500',
+      'Start-Process -FilePath $installer -ArgumentList "/S" -Wait',
+      'Start-Sleep -Milliseconds 500',
+      'Start-Process -FilePath $appExe',
+      'Remove-Item -LiteralPath $installer -ErrorAction SilentlyContinue',
+      'Remove-Item -LiteralPath $PSCommandPath -ErrorAction SilentlyContinue',
     ].join('\n');
 
     const scriptPath = path.join(app.getPath('temp'), `kakimoni-client-updater-${Date.now()}.ps1`);
@@ -233,11 +242,12 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
 
     // PowerShell でスクリプトを実行（ExecutionPolicy 無視）
     spawn('powershell.exe', [
+      '-NoProfile',
       '-ExecutionPolicy', 'Bypass',
       '-File', scriptPath,
     ], { detached: true, stdio: 'ignore' }).unref();
 
-    setTimeout(() => app.quit(), 100);
+    setTimeout(() => app.quit(), 200);
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e.message };
