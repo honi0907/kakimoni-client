@@ -94,7 +94,12 @@
   <div class="section-title">接続設定</div>
   <div class="field">
     <label>サーバーURL</label>
-    <input id="serverUrl" type="text" placeholder="http://192.168.x.x:3000">
+    <input id="serverUrl" type="text" list="serverUrlHistory" placeholder="http://192.168.x.x:3000">
+    <datalist id="serverUrlHistory"></datalist>
+    <div class="row">
+      <button class="btn btn-slate" id="btnSaveUrl" type="button">このURLを保存</button>
+      <button class="btn btn-slate" id="btnClearUrls" type="button">保存URLを全削除</button>
+    </div>
   </div>
   <button class="btn btn-green btn-full" id="btnStart">子機を起動</button>
   <button class="btn btn-amber btn-full" id="btnTest" style="margin-top:4px;">🧪 テストモード（サーバー不要）</button>
@@ -120,12 +125,57 @@ ipcRenderer.invoke('get-app-version').then((v) => {
 }).catch(() => {});
 
 // 前回設定を復元
-const savedUrl = localStorage.getItem('client_serverUrl');
-if (savedUrl) document.getElementById('serverUrl').value = savedUrl;
+const serverUrlInput = document.getElementById('serverUrl');
+const serverUrlHistoryEl = document.getElementById('serverUrlHistory');
+
+function normalizeServerUrl(v) {
+  return String(v || '').trim().replace(/\/$/, '');
+}
+
+function loadServerUrlHistory() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem('client_serverUrl_history') || '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map(normalizeServerUrl).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
+function saveServerUrlHistory(list) {
+  localStorage.setItem('client_serverUrl_history', JSON.stringify(list.slice(0, 8)));
+}
+
+function renderServerUrlHistory() {
+  const urls = loadServerUrlHistory();
+  serverUrlHistoryEl.innerHTML = urls.map((u) => `<option value="${u}"></option>`).join('');
+}
+
+function rememberServerUrl(url) {
+  const safeUrl = normalizeServerUrl(url);
+  if (!safeUrl) return;
+  const next = [safeUrl, ...loadServerUrlHistory().filter((u) => u !== safeUrl)].slice(0, 8);
+  localStorage.setItem('client_serverUrl', safeUrl);
+  saveServerUrlHistory(next);
+  renderServerUrlHistory();
+}
+
+const savedUrl = normalizeServerUrl(localStorage.getItem('client_serverUrl'));
+if (savedUrl) serverUrlInput.value = savedUrl;
+renderServerUrlHistory();
+
+document.getElementById('btnSaveUrl').addEventListener('click', () => {
+  rememberServerUrl(serverUrlInput.value);
+});
+
+document.getElementById('btnClearUrls').addEventListener('click', () => {
+  localStorage.removeItem('client_serverUrl_history');
+  renderServerUrlHistory();
+});
 
 document.getElementById('btnStart').addEventListener('click', () => {
-  const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
-  localStorage.setItem('client_serverUrl', serverUrl);
+  const serverUrl = normalizeServerUrl(serverUrlInput.value);
+  rememberServerUrl(serverUrl);
   ipcRenderer.send('open-main', { serverUrl });
 });
 
@@ -136,7 +186,8 @@ document.getElementById('btnTest').addEventListener('click', () => {
 document.getElementById('btnCheckUpdate').addEventListener('click', async () => {
   const statusEl = document.getElementById('updateStatus');
   const applyBtn = document.getElementById('btnApplyUpdate');
-  const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  const serverUrl = normalizeServerUrl(serverUrlInput.value);
+  rememberServerUrl(serverUrl);
   latestUpdateInfo = null;
   applyBtn.disabled = true;
   statusEl.className = 'status';
@@ -163,7 +214,8 @@ document.getElementById('btnCheckUpdate').addEventListener('click', async () => 
 
 document.getElementById('btnApplyUpdate').addEventListener('click', async () => {
   const statusEl = document.getElementById('updateStatus');
-  const serverUrl = document.getElementById('serverUrl').value.trim().replace(/\/$/, '');
+  const serverUrl = normalizeServerUrl(serverUrlInput.value);
+  rememberServerUrl(serverUrl);
   if (!latestUpdateInfo) {
     statusEl.className = 'status error';
     statusEl.textContent = '先に更新確認を実行してください。';
