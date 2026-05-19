@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
-const { spawn } = require('child_process');
+const { spawn, spawnSync } = require('child_process');
 
 let launcherWin = null;
 let mainWin     = null;
@@ -219,21 +219,44 @@ ipcMain.handle('apply-client-update', async (event, { downloadedPath }) => {
       return { ok: false, error: '更新ファイルが見つかりません。' };
     }
 
-    // 更新用スクリプトを別プロセスで実行し、完了後に子機を再起動する
+    const toPsSingleQuoted = (v) => String(v).replace(/'/g, "''");
+
+    // まずインストーラー起動(UAC)を同期確認する。失敗時は子機を終了しない。
+    const launchCmd = [
+      "$ErrorActionPreference = 'Stop'",
+      `$p = Start-Process -FilePath '${toPsSingleQuoted(downloadedPath)}' -ArgumentList '/S' -Verb RunAs -PassThru`,
+      'Write-Output $p.Id',
+    ].join('; ');
+    const launched = spawnSync('powershell.exe', [
+      '-NoProfile',
+      '-ExecutionPolicy', 'Bypass',
+      '-Command', launchCmd,
+    ], {
+      encoding: 'utf8',
+      windowsHide: true,
+    });
+
+    if (launched.status !== 0) {
+      const errText = String((launched.stderr || launched.stdout || '')).trim();
+      return { ok: false, error: errText || 'インストーラーの起動に失敗しました（UACが拒否された可能性があります）。' };
+    }
+
+    const installerPid = parseInt(String(launched.stdout || '').trim(), 10);
+    if (!Number.isFinite(installerPid) || installerPid <= 0) {
+      return { ok: false, error: 'インストーラーPIDを取得できませんでした。' };
+    }
+
+    // 更新用スクリプトを別プロセスで実行し、インストーラー完了後に子機を再起動する
     const currentExePath = process.execPath;
     const psScript = [
       '$ErrorActionPreference = "Stop"',
-      '$installer = @"',
-      downloadedPath,
-      '"@',
+      '$installerPid = ' + installerPid,
       '$appExe = @"',
       currentExePath,
       '"@',
-      'Start-Sleep -Milliseconds 500',
-      'Start-Process -FilePath $installer -ArgumentList "/S" -Wait',
+      'Wait-Process -Id $installerPid -ErrorAction SilentlyContinue',
       'Start-Sleep -Milliseconds 500',
       'Start-Process -FilePath $appExe',
-      'Remove-Item -LiteralPath $installer -ErrorAction SilentlyContinue',
       'Remove-Item -LiteralPath $PSCommandPath -ErrorAction SilentlyContinue',
     ].join('\n');
 
