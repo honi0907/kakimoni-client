@@ -20,6 +20,16 @@
     overflow: hidden;
   }
   h2 { font-size: 1.1rem; color: #86efac; }
+  .app-version-badge {
+    margin-left: 10px;
+    font-size: 0.78rem;
+    color: #bbf7d0;
+    background: #0b1324;
+    border: 1px solid #334155;
+    border-radius: 3px;
+    padding: 2px 8px;
+    vertical-align: middle;
+  }
   .section {
     background: #1e293b;
     border-radius: 3px;
@@ -76,7 +86,7 @@
 </head>
 <body>
 
-<h2>✏️ KakiMoni 子機 サーバー接続ランチャー</h2>
+<h2>✏️ KakiMoni 子機 サーバー接続ランチャー <span class="app-version-badge" id="client-app-version">v-</span></h2>
 
 <!-- 接続設定 -->
 <div class="section">
@@ -102,6 +112,11 @@
 const { ipcRenderer } = require('electron');
 
 let latestUpdateInfo = null;
+
+ipcRenderer.invoke('get-app-version').then((v) => {
+  const el = document.getElementById('client-app-version');
+  if (el) el.textContent = `v${v || '-'}`;
+}).catch(() => {});
 
 // 前回設定を復元
 const savedUrl = localStorage.getItem('client_serverUrl');

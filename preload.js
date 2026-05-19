@@ -5,4 +5,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDisplayIfAvailable: (seatId) => ipcRenderer.send('auto-open-display', { seatId }),
   // ランチャーに戻る
   goToLauncher: () => ipcRenderer.send('go-to-launcher'),
+  // Electronアプリのバージョン取得
+  getAppVersion: () => ipcRenderer.invoke('get-app-version'),
 });

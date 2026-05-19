@@ -104,6 +104,8 @@ function createLauncher() {
   launcherWin.on('closed', () => app.quit());
 }
 
+ipcMain.handle('get-app-version', () => app.getVersion());
+
 ipcMain.on('open-test', (event, { seatId }) => {
   const win = new BrowserWindow({
     width: 1024,
